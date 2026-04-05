@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 
-// 3 rows — all fit on one page (< PAGE_SIZE=25); enough for filter tests.
+// 3 rows — all fit on one page (< PAGE_SIZE=25); enough for filter / nearest tests.
 const MOCK_CSV_SMALL = `locationid,Applicant,FacilityType,cnn,LocationDescription,Address,blocklot,block,lot,permit,Status,FoodItems,X,Y,Latitude,Longitude,Schedule,dayshours,NOISent,Approved,Received,PriorPermit,ExpirationDate,Location,Fire Prevention Districts,Police Districts,Supervisor Districts,Zip Codes,Neighborhoods (old)
 1,The Geez Freeze,Truck,,,3750 18TH ST,,,, ,APPROVED,Snow Cones,,,37.762,-122.427,,,,,,,,"(37.762, -122.427)",,,,
 2,Datam SF LLC,Truck,,,2535 TAYLOR ST,,,, ,EXPIRED,Asian Fusion,,,37.805,-122.415,,,,,,,,"(37.805, -122.415)",,,,
@@ -148,7 +148,6 @@ describe('App — pagination', () => {
     mockFetch(buildLargeCsv(28))
     render(<App />)
     await waitFor(() => expect(screen.getByText(/showing/i)).toBeInTheDocument())
-
     expect(screen.getByText(/showing/i)).toHaveTextContent('1–25')
   })
 
@@ -168,7 +167,6 @@ describe('App — pagination', () => {
   it('does not show pagination when all results fit on one page', async () => {
     render(<App />)
     await waitFor(() => expect(screen.getByText('The Geez Freeze')).toBeInTheDocument())
-
     expect(screen.queryByRole('navigation', { name: /pagination/i })).not.toBeInTheDocument()
   })
 
@@ -178,13 +176,70 @@ describe('App — pagination', () => {
     render(<App />)
     await waitFor(() => expect(screen.getByText('Vendor 001')).toBeInTheDocument())
 
-    // Go to page 2
     const nav = screen.getByRole('navigation', { name: /pagination/i })
     await user.click(within(nav).getByRole('button', { name: /next page/i }))
     await waitFor(() => expect(screen.getByText('Vendor 026')).toBeInTheDocument())
 
-    // Apply a filter — should jump back to page 1
     await user.type(screen.getByLabelText(/applicant name/i), 'vendor')
     await waitFor(() => expect(screen.getByText('Vendor 001')).toBeInTheDocument())
+  })
+})
+
+describe('App — Near Me tab', () => {
+  beforeEach(() => {
+    // Provide a mock geolocation that immediately resolves near 18TH ST
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      geolocation: {
+        getCurrentPosition: vi.fn((success: PositionCallback) => {
+          success({
+            coords: { latitude: 37.762, longitude: -122.427 },
+          } as GeolocationPosition)
+        }),
+      },
+    })
+  })
+
+  it('renders Near Me tab button', async () => {
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('tab', { name: /near me/i })).toBeInTheDocument())
+  })
+
+  it('shows the location prompt when Near Me tab is active', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('tab', { name: /near me/i })).toBeInTheDocument())
+
+    await user.click(screen.getByRole('tab', { name: /near me/i }))
+    expect(screen.getByText(/find the 5 nearest/i)).toBeInTheDocument()
+  })
+
+  it('shows nearest facilities after clicking Use my location', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('tab', { name: /near me/i })).toBeInTheDocument())
+
+    await user.click(screen.getByRole('tab', { name: /near me/i }))
+    await user.click(screen.getByRole('button', { name: /use my location/i }))
+
+    // The Geez Freeze is at 37.762,-122.427 — same as the mock position, so it's closest
+    await waitFor(() =>
+      expect(screen.getByText('The Geez Freeze')).toBeInTheDocument(),
+    )
+  })
+
+  it('shows distance in results', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('tab', { name: /near me/i })).toBeInTheDocument())
+
+    await user.click(screen.getByRole('tab', { name: /near me/i }))
+    await user.click(screen.getByRole('button', { name: /use my location/i }))
+
+    // Distance column should show "X.XX mi"
+    await waitFor(() => {
+      const distanceCells = screen.getAllByText(/^\d+\.\d{2} mi$/)
+      expect(distanceCells.length).toBeGreaterThan(0)
+    })
   })
 })

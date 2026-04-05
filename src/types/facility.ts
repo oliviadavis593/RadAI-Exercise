@@ -24,3 +24,7 @@ export interface Facility {
   permit: string
   expirationDate: string
 }
+
+export interface NearestFacility extends Facility {
+  distanceKm: number
+}

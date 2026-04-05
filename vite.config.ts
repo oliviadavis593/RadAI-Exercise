@@ -8,5 +8,7 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // Exclude backend directory — it uses Jest, not Vitest
+    exclude: ['backend/**', 'node_modules/**'],
   },
 })

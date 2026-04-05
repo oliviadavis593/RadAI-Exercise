@@ -1,150 +1,145 @@
 # Architecture Decisions
 
-## D1 — Client-side only, no backend
+## D1 — Client-side only data handling (frontend)
 
-**Decision:** All data loading and filtering happens in the browser. No API server.
+**Decision:** All search and filter operations in the frontend run in-browser against the in-memory parsed CSV. No API call for search.
 
-**Why:** The dataset is ~498 rows (~80KB CSV). Filtering in JavaScript takes under 1ms. A backend would add network latency, deployment complexity, and zero user-facing benefit at this scale.
+**Why:** 498 rows filtered in JavaScript takes under 1ms. A network round-trip to a backend would add 50–200ms with zero user-facing benefit. The frontend is independently deployable with no backend dependency.
 
-**Alternatives considered:**
-- Express/Node API serving filtered data — overhead without benefit; harder to test
-- Next.js with server components — framework complexity not justified for a single data view
+**Alternatives considered:** Backend API for all queries — correct choice at 50k+ rows, overkill here.
 
-**Tradeoff:** If the dataset grows to tens of thousands of rows, client-side filtering degrades. The fix is an indexed API, but that's a real scaling problem, not a speculative one.
+**Tradeoff:** Client-side filtering does not scale to large datasets. Documented in README scaling section with the correct migration path (PostgreSQL trigram index + paginated API).
 
----
 
-## D2 — CSV bundled as a static asset
+## D2 — CSV bundled as static asset
 
-**Decision:** Copy the CSV into `public/` and fetch it from the local server.
+**Decision:** CSV served from `public/` and fetched at app load.
 
-**Why:** Keeps the demo self-contained. No dependency on an external URL that could 404 during a review. Works offline.
+**Why:** Self-contained demo. No external URL dependency that could 404 during a review. Works offline.
 
-**Alternatives considered:**
-- Fetch from SF Open Data API — CORS uncertainty and network dependency during review
-- Import CSV as JSON via Vite plugin — adds build complexity; PapaParse streaming is cleaner
-
-**Tradeoff:** Data is a static snapshot. Production would need periodic re-fetches or a live API connection.
-
----
+**Tradeoff:** Data is a static snapshot. Production would need periodic ETL or a live API connection.
 
 ## D3 — PapaParse for CSV parsing
 
-**Decision:** Use PapaParse over a hand-rolled split.
+**Decision:** PapaParse over a hand-rolled CSV split.
 
-**Why:** SF address fields contain commas. A naive `row.split(',')` produces wrong column counts. PapaParse handles RFC 4180 quoting correctly and has a typed TypeScript API.
-
-**Alternatives considered:** `csv-parse` (server-side focused, larger bundle), hand-rolled (fragile on quoted fields).
+**Why:** SF address fields contain commas inside quoted fields. `row.split(',')` produces wrong column counts. PapaParse handles RFC 4180 quoting correctly in both frontend and backend.
 
 **Tradeoff:** ~30KB bundle addition. Correct by default.
 
----
+## D4 — Vite over Create React App
 
-## D4 — Vite instead of Create React App
+**Decision:** `npm create vite` with React + TypeScript template.
 
-**Decision:** Use `npm create vite` with React + TypeScript template.
+**Why:** CRA is unmaintained. Vite starts in ~300ms; Vitest integrates natively.
 
-**Why:** CRA is unmaintained. Vite's dev server starts in ~300ms vs CRA's 5-10s. Vitest integrates natively.
+**Tradeoff:** None meaningful.
 
-**Alternatives considered:** CRA (legacy), Next.js (SSR not needed for a single-page app).
+## D5 — Tailwind CSS v3
 
-**Tradeoff:** None meaningful for this scope.
+**Decision:** Tailwind utility classes. Pinned to v3.
 
----
+**Why:** Fast to write. Styles are co-located with markup. Pinned to v3 because v4 has a different config model and less mature ecosystem tooling.
 
-## D5 — Tailwind CSS v3 for styling
-
-**Decision:** Use Tailwind utility classes, no custom CSS files. Pinned to v3.
-
-**Why:** Fast to write in a time-boxed context. Pinned to v3 over v4 because v4 has a different config model and less mature ecosystem tooling.
-
-**Alternatives considered:** CSS Modules (clean but slower to write), Emotion/styled-components (runtime cost).
-
-**Tradeoff:** Class strings can get long. Mitigated by keeping components small.
-
----
+**Tradeoff:** Class strings can be long. Mitigated by keeping components small.
 
 ## D6 — useState + useMemo, no state library
 
-**Decision:** Filter state in `App.tsx` as `useState`. Filtered results derived via `useMemo`.
+**Decision:** Filter state in `App.tsx` as `useState`, results derived via `useMemo`.
 
-**Why:** Four filter fields driving one derived list. `useMemo` was designed for this. A store adds ~200 lines of boilerplate for no benefit.
+**Why:** Four filter fields → one derived list. This is exactly the pattern `useMemo` was designed for.
 
-**Alternatives considered:** Zustand (for cross-component state without a clear owner), useReducer (adds indirection without gain for 4 fields).
+**Tradeoff:** If the app gains cross-page state or many more filter axes, `useReducer` or a store would be the right upgrade.
 
-**Tradeoff:** If the app gains significantly more filter dimensions or cross-page state, `useReducer` or a store would be the right upgrade.
+## D7 — Semantic `<table>` for results
 
----
+**Decision:** HTML table, not a card grid.
 
-## D7 — Results displayed in a table, not cards
+**Why:** Correct semantic element for structured comparative data. Supports keyboard navigation and screen readers out of the box.
 
-**Decision:** Use `<table>` for results.
-
-**Why:** Semantic element for structured comparative data. Supports keyboard navigation out of the box. Screen-reader friendly.
-
-**Alternatives considered:** Card grid (better for image-heavy heterogeneous data), virtualized list (only needed at render-count large enough to cause frame drops; ~498 rows doesn't qualify).
-
-**Tradeoff:** Tables require care on mobile. Handled with `overflow-x-auto`.
-
----
+**Tradeoff:** Requires `overflow-x-auto` for mobile. Applied on the wrapper div.
 
 ## D8 — Status and Type as `<select>` dropdowns
 
-**Decision:** Both status and type filters are dropdowns with predefined options.
+**Decision:** Dropdowns with predefined options, not free-text.
 
-**Why:** Both are finite known sets. Dropdowns prevent invalid input, make options discoverable, and produce exact matches.
+**Why:** Both are finite known sets. Dropdowns prevent typos and make options discoverable.
 
-**Tradeoff:** Single-select only. Multi-select is a reasonable feature request (e.g., APPROVED + ISSUED). Not in scope.
+**Tradeoff:** Single-select only. Multi-select would require a checkbox group — not in scope.
 
----
+## D9 — happy-dom over jsdom
 
-## D9 — happy-dom instead of jsdom as test environment
+**Decision:** `happy-dom` as the Vitest DOM environment.
 
-**Decision:** Use `happy-dom` as the Vitest DOM environment.
+**Why:** jsdom v29 has a transitive ESM-only dependency that breaks under Node 20.11.1's CJS loader. happy-dom has no such issue.
 
-**Why:** jsdom v29 has a transitive ESM-only dependency that breaks under Node 20.11.1's CJS loader. happy-dom has no such issue and is fully compatible with React Testing Library.
+**Tradeoff:** happy-dom has subtle behavioral differences from a real browser — none that affect these tests.
 
-**Alternatives considered:** Downgrade jsdom (creates ecosystem drift), upgrade Node (can't control reviewer's environment).
+## D10 — Vitest v2, Jest for backend
 
-**Tradeoff:** happy-dom has subtle behavioral differences from a real browser, but none that affect these component tests.
+**Decision:** Vitest v2 for frontend (Node 20.11.1 compatibility); standard Jest for backend (no DOM environment needed).
 
----
+**Why:** Vitest v4 requires `node:util.styleText` added in Node 20.12.0. Jest runs fine under Node 20.x. Using different test runners per concern is appropriate — frontend needs DOM emulation, backend tests are pure Node.
 
-## D10 — Vitest v2 instead of v4
+**Tradeoff:** Two test commands (`npm test` at root, `npm test` in `backend/`). Documented clearly in README.
 
-**Decision:** Pin Vitest to `^2.1.9`.
+## D11 — Pagination with `resetKey` pattern
 
-**Why:** Vitest v4 requires `node:util.styleText` added in Node 20.12.0. The target machine has Node 20.11.1.
+**Decision:** `usePagination(items, pageSize, resetKey)` resets to page 1 when `resetKey` changes.
 
-**Alternatives considered:** Upgrade Node (not controllable), Jest (requires extra config for ESM/TS).
+**Why:** The alternative — calling `setPage(1)` at each filter change site — is imperative and easy to miss. The `resetKey` pattern is declarative: pass the search state object, hook handles the reset.
 
-**Tradeoff:** Missing some v4 improvements (faster worker model) that are irrelevant for this project.
-
----
-
-## D11 — Pagination via `usePagination` with `resetKey`
-
-**Decision:** Pagination state lives in a custom hook that accepts a `resetKey`. When `resetKey` changes, the hook resets to page 1 via `useEffect`.
-
-**Why:** The alternative — calling `setPage(1)` every time a filter changes — scatters imperative calls across the app. The `resetKey` pattern is declarative: pass the search state as the key, and the hook handles the reset automatically.
-
-**Alternatives considered:**
-- Derived page from URL params — good for shareability, adds routing complexity (YAGNI here)
-- `useReducer` combining search + page — couples concerns that are better separated
-
-**Tradeoff:** `useEffect` for page reset fires one tick after the filter change, which means there's a brief frame where page 2 of the old filtered set renders before resetting. In practice this is invisible at this dataset size.
-
----
+**Tradeoff:** `useEffect` for the reset fires one tick after the filter change. Invisible at this dataset size.
 
 ## D12 — Portal-based Tooltip
 
-**Decision:** The food-items tooltip renders to `document.body` via `ReactDOM.createPortal`, positioned with `position: fixed` using `getBoundingClientRect()` captured on `mouseenter`.
+**Decision:** Food-items tooltip renders via `createPortal` to `document.body`, positioned with `position: fixed` + `getBoundingClientRect()`.
 
-**Why:** The table wrapper uses `overflow-x-auto`, which creates a clipping stacking context. Any `position: absolute` child of the table would be clipped. A portal escapes all ancestor overflow constraints.
+**Why:** The table wrapper uses `overflow-x-auto`, which clips `position: absolute` children. A portal escapes all ancestor overflow constraints.
+
+**Alternatives considered:** Native `title` attribute (no style control, 1s delay), third-party tooltip library (dependency for ~40 lines of code).
+
+**Tradeoff:** Tooltip position is captured on `mouseenter` and does not update on scroll — acceptable edge case for a data table.
+
+## D13 — Haversine formula for distance, no external mapping API
+
+**Decision:** Implement Haversine in-house as a pure function in both frontend and backend.
+
+**Why:** Haversine is accurate to ~0.5% at city scale — well within the precision needed for "nearest 5 trucks." No API key, no network call, no third-party SDK. The formula is 10 lines and trivially unit-testable.
+
+**Alternatives considered:** Google Maps Distance Matrix API — introduces cost, rate limits, and network dependency. Overkill for a point-to-point distance sort.
+
+**Tradeoff:** Haversine does not account for roads or walking paths. A routing API would give "nearest by walking distance" rather than "nearest as the crow flies." For finding the closest food truck, straight-line distance is a reasonable proxy.
+
+## D14 — Nearest trucks computed in-browser (frontend)
+
+**Decision:** The frontend computes nearest trucks using in-memory data + Haversine, rather than calling the backend API.
+
+**Why:** The frontend already has all 498 rows in memory from the CSV load. Computing distances in-browser is ~0ms and keeps the frontend independently deployable. The backend provides the same feature as a standalone API — both demonstrate the capability through different interfaces.
+
+**Alternatives considered:** Frontend calls `GET /api/facilities/nearest` — shows full-stack integration but creates a runtime dependency on the backend being available.
+
+**Tradeoff:** The two implementations are similar code duplicated across the boundary. This is intentional: each service is self-contained and can be used independently. A shared npm package would eliminate the duplication but adds build infrastructure not warranted for this project.
+
+## D15 — Express for backend API
+
+**Decision:** Express v4 + TypeScript.
+
+**Why:** Minimal, well-understood, widely documented. No database needed — CSV loaded into memory at startup. All endpoints are stateless.
 
 **Alternatives considered:**
-- Native `title` attribute — already had this; browsers render it with an ugly native tooltip, no styling control, and a 1-second delay
-- CSS-only tooltip with `position: absolute` — clipped by `overflow-x-auto`
-- Third-party tooltip library (Floating UI, Tippy.js) — adds a dependency for a feature I can implement in ~40 lines
+- Fastify — faster, but Express is more familiar to more reviewers
+- NestJS — appropriate for large teams; adds significant framework overhead
+- Next.js API routes — couples frontend and backend into one process; harder to deploy independently
 
-**Tradeoff:** The tooltip position is calculated once on `mouseenter`. If the user scrolls while hovering, the tooltip won't follow. For a data table, this is an acceptable edge case.
+**Tradeoff:** Express has no built-in request validation. Query params are cast manually in the route handler. At this scale, that is acceptable; for a production API, `zod` or `joi` would be added.
+
+## D16 — Swagger JSDoc for API documentation
+
+**Decision:** `swagger-jsdoc` annotations in route files, served via `swagger-ui-express`.
+
+**Why:** Documentation is co-located with the code it describes, which reduces drift. Generates both an interactive UI (`/api-docs`) and a machine-readable spec (`/api/openapi.json`).
+
+**Alternatives considered:** Separate YAML spec file — correct for large APIs; tends to drift from implementation without tooling to enforce consistency.
+
+**Tradeoff:** JSDoc annotations in route files add visual noise. Acceptable for the number of endpoints here.

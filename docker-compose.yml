@@ -1,0 +1,23 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - CSV_PATH=/data/Mobile_Food_Facility_Permit.csv
+    volumes:
+      # Mount the CSV from the project root into the container at runtime.
+      # This avoids duplicating the file and keeps both services in sync.
+      - ./public/Mobile_Food_Facility_Permit.csv:/data/Mobile_Food_Facility_Permit.csv:ro
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    # Frontend is standalone (reads CSV from its own bundle in /public).
+    # No depends_on backend — the frontend does not call the backend API.
