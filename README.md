@@ -2,6 +2,17 @@
 
 A full-stack application for searching San Francisco mobile food facility permits.
 
+## Frontend
+| Search Page | Near Me Page |
+| :---: | :---: |
+| <img width="1728" height="946" alt="Screenshot 2026-04-05 at 12 50 49 PM" src="https://github.com/user-attachments/assets/99d65238-c848-4149-a172-c371d67c8178" /> | <img width="1728" height="737" alt="Screenshot 2026-04-05 at 12 53 48 PM" src="https://github.com/user-attachments/assets/ffafbe58-1e38-4944-8ef3-6d99e0d41a4e" /> |
+
+## Backend
+
+<img width="1728" height="957" alt="Screenshot 2026-04-05 at 1 04 40 PM" src="https://github.com/user-attachments/assets/d5b10f18-006c-49a1-adf8-fce0483690b3" />
+
+
+
 ## Problem and Solution
 
 The [SF Open Data portal](https://data.sfgov.org/Economy-and-Community/Mobile-Food-Facility-Permit/rqzj-sfat/data) publishes a dataset of ~498 mobile food vendor permits. The goal is to build a searchable application with the following features:
